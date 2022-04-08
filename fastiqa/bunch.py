@@ -81,15 +81,15 @@ def All(db):
     return d
 
 def load_dbinfo(json_file, **kwargs):
-    with open(file) as f:
+    with open(json_file) as f:
         dbinfo = json.load(f)
         parent_folder = Path(json_file).parent
         if '__name__' not in dbinfo:
             dfinfo['__name__'] = str(parent_folder.stem)
         if 'dir' not in dbinfo:
             dbinfo['dir'] = str(parent_folder)
-            
-        return  dbinfo.update(kwargs)
+        dbinfo.update(kwargs)
+        return dbinfo
 
 
 def Patch1(db):
@@ -177,10 +177,10 @@ class IqaDataBunch():
     def _data(self):
         # build data, access new attribute, not found
         self._loading = True
-        print(f'Loading data... {self} (bs={self.bs})')
+        # print(f'Loading data... {self} (bs={self.bs})')
         data = self.get_data()
         self._loading = False
-        print(f'Loaded data {self}')
+        # print(f'Loaded data {self}')
         return data
 
     def __getitem__(self, index):

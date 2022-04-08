@@ -20,7 +20,7 @@ dls.show_batch()
 
 from fastai.vision.all import *
 from ._io_clip import *
-from ...bunch import IqaDataBunch
+from ..bunch import IqaDataBunch
 
 """
 Note here, a video means a collection of jpg files

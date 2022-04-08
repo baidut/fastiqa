@@ -3,10 +3,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from pathlib import Path
-from fastiqa.log import *
 import math
+from ..basics import * # logger
 
 def takespread_idx(N, num, clip_size=16):
     length = float(N-clip_size)

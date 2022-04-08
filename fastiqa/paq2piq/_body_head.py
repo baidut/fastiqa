@@ -2,7 +2,7 @@ __all__ = ['BodyHeadModel']
 
 from fastai.vision.all import *
 import fastai
-from .. import * # IqaModel
+from ..model import * # IqaModel
 from ._3d import *
 from packaging import version
 # from ..utils.cached_property import cached_property

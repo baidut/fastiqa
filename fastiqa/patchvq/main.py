@@ -27,9 +27,12 @@ PatchVQ().roipool('r3d_18', dbinfo, backbone=r3d_18)
 # from torchvision.models.video.resnet import *
 # from tqdm import tqdm
 from .. import *
-from tqdm import tqdm
+
+from tqdm.auto import tqdm
+
 from ._inceptiontime import *
 from ._io_single_vid2mos import *
+from ._io_feat2mos import *
 
 # extractFeatures
 from fastai.vision.all import * # resnet18
@@ -37,34 +40,29 @@ from torchvision.models.video.resnet import * # r3d_18
 
 # roipool
 from ..paq2piq._roi_pool import LegacyRoIPoolModel
-from ...learn import TestLearner
-from ...iqa_exp import IqaExp
+from ..learn import TestLearner
+from ..model import IqaModel
+from ..iqa_exp import IqaExp
 
 # soipool
 from ._soi_pool import pool_features
 
-
-
 def get_features(x, name, bs, vid_id):
-    try:
-        x.dls.bs = bs
-        x.dls.set_vid_id(vid_id)
-        x.extract_features(name=name, skip_exist=True)
-    except RuntimeError:
-        tmp_bs = bs
-        while True:
-            tmp_bs //= 2
-            try:
-                x.dls.bs = tmp_bs
-                x.extract_features(name=name, skip_exist=True)
-                break
-            except RuntimeError as e:
-                if tmp_bs == 1:
-                    print("Batch size has reduced to 1. Check if there is something wrong or clear GPU memory")
-                    raise e
-                else:
-                    print(f'CUDA out of memory. Reduce bs from {bs} to {tmp_bs}.')
-                    continue
+    x.dls.set_vid_id(vid_id)
+    tmp_bs = bs
+    while True:
+        try:
+            x.dls.bs = tmp_bs
+            x.extract_features(name=name, skip_exist=True)
+            break
+        except RuntimeError as e:
+            if tmp_bs == 1:
+                print("Batch size has reduced to 1. Check if there is something wrong or clear GPU memory")
+                raise e
+            else:
+                tmp_bs //= 2
+                print(f'CUDA out of memory. Reduce bs from {bs} to {tmp_bs}.')
+                continue
 
 def load_feature(vid, feat, path):
     npy_file = Path(path)/feat/(str(vid) + '.npy')
@@ -122,7 +120,7 @@ class PatchVQ(InceptionTimeModel):
     n_out=4
     path_to_paq2piq_model_state = '/home/zq/FB8T/pth/RoIPoolModel-fit.10.bs.120.pth'
 
-    def bunch(self, dls):
+    def bunch(self, dls, bs=128):
         if isinstance(dls, dict):
             # download extracted features or extract by your own
             feats = FeatureBlock('paq2piq_pooled', roi_index=None, clip_num=None, clip_size=None), \
@@ -146,12 +144,14 @@ class PatchVQ(InceptionTimeModel):
         pool_features(dbinfo, featname, input_suffix=input_suffix, output_suffix=output_suffix, pool_size=pool_size)
 
 
-    def roipool(self, featname, dbinfo, backbone, path_to_model_state=None):
+    def roipool(self, featname, dbinfo, backbone, path_to_model_state=None, batch_size=None):
+        # defautls
         if '3d' in featname:
             bs, clip_num, clip_size = 8, 40, 8
         else:
             bs, clip_num, clip_size = 128, None, 1
 
+        if batch_size: bs = batch_size
 
         roi_col = None # depending on database
 
@@ -168,6 +168,7 @@ class PatchVQ(InceptionTimeModel):
         if path_to_model_state:
             model_state = torch.load(path_to_model_state, map_location=lambda storage, loc: storage)
             model.load_state_dict(model_state["model"]) # model.load_state_dict(model_state["model"])
+            print('loaded model weights: '+path_to_model_state)
 
         learn = TestLearner(dls, model)
         vid_list = dls.video_list.index.tolist()
@@ -175,7 +176,14 @@ class PatchVQ(InceptionTimeModel):
 
         e = IqaExp('exp_features', gpu=0, seed=None)
         e[featname] = learn
-        e.run(lambda x: [get_features(x, featname, bs=bs, vid_id=vid_id) for vid_id in tqdm(vid_list)])
+
+        def process(x):
+          bar = tqdm(vid_list)
+          for vid_id in bar:
+            bar.set_description('Processing: ' + vid_id)
+            get_features(x, featname, bs=bs, vid_id=vid_id)
+
+        e.run(process)
 
 
     @staticmethod
@@ -183,17 +191,4 @@ class PatchVQ(InceptionTimeModel):
         # n_epoch = 10
         # bs = 128
         # modify the json files to point to your database locations
-      	LSVQ = load_dbinfo('/home/zq/FB8T/db/LSVQ/dbinfo.json')
-      	LIVE_VQC = load_dbinfo('/home/zq/FB8T/db/LIVE_VQC/dbinfo.json')
-
-        e = IqaExp('release', gpu=0)
-        e += IqaLearner(dls=LSVQ, model = PVQ(c_in=2048+2048, n_out=4), loss_func=L1LossFlat())
-
-        # train the model if pretrained model is not available
-        # e.fit_one_cycle(n_epoch)
-
-        # load the trained model
-        e.load();
-
-        # cross database validation
-        e.valid([All(LIVE_VQC)])
+        pass
