@@ -151,12 +151,12 @@ class PatchVQ(InceptionTimeModel):
             self.n_out = 1
         return dls
 
-    def extractFeatures(self, featname, dbinfo):
+    def extractFeatures(self, dbinfo):
         model_state = load_state_dict_from_url('https://github.com/baidut/PatchVQ/releases/download/v0.1/RoIPoolModel-fit.10.bs.120.pth')
         self.roipool('paq2piq', dbinfo, backbone=resnet18, model_state=model_state)
-        self.soipool('paq2piq', dbinfo)
-
         self.roipool('r3d18', dbinfo, backbone=r3d18_K_200ep, batch_size=1)
+
+        self.soipool('paq2piq', dbinfo)
         self.soipool('r3d18', dbinfo)
 
 
