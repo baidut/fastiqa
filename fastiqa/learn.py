@@ -23,6 +23,8 @@ from .bunch import * # All, IqaDataBunch
 from .metrics import *
 # from dataclasses import dataclass
 import seaborn as sns
+from loguru import logger
+
 
 def create_sequence_batch(data):
     xs, ys = [], []
@@ -50,6 +52,8 @@ class IqaLearner(Learner):
 
     @property
     def abbr(self):
+        assert hasattr(self.model, '__name__')
+        assert hasattr(self.dls, '__name__')
         return self.model.__name__ + ' @' + self.dls.__name__
 
     # def to_json(self):
@@ -67,16 +71,16 @@ class IqaLearner(Learner):
             # no __name__ attribute
             # add __str__ ?
             # TODO: show changed properties when bunching
-            logging.info(f'Bunching ... {model.__name__}')
+            logger.info(f'Bunching ... {model.__name__}')
             dls = model.bunch(dls)
-            logging.info(f'Bunched ... {model.__name__}')
+            logger.info(f'Bunched ... {model.__name__}')
             if isinstance(dls, IqaDataBunch):
                 dls._bunching = False
         else:
-            logging.warning(f'model {model.__name__} did not implement bunch(dls) method')
+            logger.warning(f'model {model.__name__} did not implement bunch(dls) method')
 
         if hasattr(model, 'split_on'):
-            print('Discriminative layer training is enabled')
+            logger.info('Discriminative layer training is enabled')
             self.splitter=model.split_on
 
         #if self.log: wandb.init()
@@ -87,7 +91,7 @@ class IqaLearner(Learner):
                 self.monitor = metrics[0].__name__ if hasattr(metrics[0], '__name__') else metrics[0].name # getattr('name', metrics[0].__class__.__name__)
             cbs = [CSVLogger(append=True), ShowGraphCallback(), SaveModelCallback(monitor=self.monitor)]
             #if self.log: cbs += [WandbCallback(log_preds=False)] # too slow
-            logging.info(f'monitoring {self.monitor}')
+            logger.info(f'monitoring {self.monitor}')
         super().__init__(dls, model, *args, metrics=metrics, cbs=cbs+add_cbs, loss_func=loss_func, **kwargs)
 
         # [Discriminative layer training](https://docs.fast.ai/basic_train.html#Discriminative-layer-training)
@@ -131,13 +135,13 @@ class IqaLearner(Learner):
 
         csv_file = self.path / ('valid@' + on.__name__ + suffixes[metric_idx] + '.csv')
         if os.path.isfile(csv_file) and cache:
-            logging.warning(f'load cache {csv_file}')
+            logger.warning(f'load cache {csv_file}')
             df = pd.read_csv(csv_file)
             output = np.array(df['output'].tolist())
             target = np.array(df['target'].tolist())
         else:
             c = on.c if type(on.c) == int else on.c[-1]
-            logging.debug(f'validating... {self.model.__name__}@{on.__name__} (c={c})')
+            logger.debug(f'validating... {self.model.__name__}@{on.__name__} (c={c})')
             # on.c = 1
             # TODO fuse duplicate code with rois_learner
             current_data = self.dls
@@ -164,7 +168,7 @@ class IqaLearner(Learner):
             if cache:
                 # # we already loaded the data, so feel free to call data.c?
                 if c == 4:
-                    print('on.c==4')
+                    logger.debug('db.c==4')
                     if len(output) == len(target):
                         for n in [0, 1, 2, 3]:
                             df = pd.DataFrame({'output': output[n::c], 'target': target[n::c]})
@@ -178,13 +182,13 @@ class IqaLearner(Learner):
                     else:
                         raise
                 elif c == 2:
-                    print('on.c==2')
+                    logger.debug('db.c==2')
                     for n, roi_index in enumerate(on.feats[0].roi_index):
                         df = pd.DataFrame({'output': output[n::c], 'target': target[n::c]})
                         csv_file = self.path / ('valid@' + on.__name__ + suffixes[roi_index] + '.csv')
                         df.to_csv(csv_file, index=False)
                 elif c == 1:
-                    print('on.c==1')
+                    logger.debug('db.c==1')
                     df = pd.DataFrame({'output': output, 'target': target})
                     df.to_csv(csv_file, index=False)
                 else:
@@ -212,13 +216,13 @@ class IqaLearner(Learner):
             # g.ax_marg_y.set_axis_off()
         return output, target
 
-    def valid(self, on=None, metrics=None, cache=True, jointplot=True, all_items=False, **kwargs):
+    def valid(self, db=None, metrics=None, cache=True, jointplot=True, all_items=False, **kwargs):
         """
         all_items/ True: test on all items, False: test on items in valid subset.
         """
         def valid_one(data):
-            # logging.debug(f'validating... {self.model.__name__}@{data.__name__}')
-            logging.debug(f'validating... {self.model.__name__}@{data.__name__}')
+            # logger.debug(f'validating... {self.model.__name__}@{data.__name__}')
+            logger.debug(f'validating... {self.model.__name__}@{data.__name__}')
             output, target = self.get_np_preds(on=data, cache=cache, jointplot=jointplot, **kwargs)  # TODO note here only output 1 scores
             output, target = torch.from_numpy(output), torch.from_numpy(target)
             return {metric.name: metric(output, target) for metric in metrics}
@@ -226,23 +230,28 @@ class IqaLearner(Learner):
         if metrics is None: metrics = self.metrics
 
         # avoid changing self.data
-        if on is None:
-            on = self.dls
+        if db is None:
+            db = self.dls
 
-        if not isinstance(on,  (list, tuple)  ):
-            on = [on]
+        if not isinstance(db,  (list, tuple)  ):
+            db = [db]
 
         # call model.bunch after dls.bunch
         # if don't bunch, name is not available
         # bunch won't take time !!!! just update attributes, change svr model to allow that. only cache X when needed !!!
 
-        assert self.dls != None
-        on = [self.dls.bunch(All(x) if x['__name__'] != self.dls.__name__ else x, **kwargs) if isinstance(x, (str,dict)) else x for x in on]
+        # assert self.dls != None
+        # automatically convert to all data? no, leave it for the users
+        # All(x) if x['__name__'] != self.dls.__name__ else x
+        # on = [self.dls.bunch(x, **kwargs) if isinstance(x, (str,dict)) else x for x in on]
+
+        # call model.bunch instead
+        db = [self.model.bunch(x, **kwargs) if isinstance(x, (str,dict)) else x for x in db]
         #don't change c
         # must call model.bunch
         # on = [self.model.bunch(x, **kwargs) for x in on]
-        records = [valid_one(data) for data in on]
-        return pd.DataFrame(records, index=[data.__name__ for data in on]) # abbr
+        records = [valid_one(data) for data in db]
+        return pd.DataFrame(records, index=[data.__name__ for data in db]) # abbr
 
     # on=None, if on is None: on = self.dls
     # Keep it simple: by default, extract self.dls
@@ -331,6 +340,8 @@ class IqaLearner(Learner):
 class TestLearner(IqaLearner):
     # don't use None, it will be filled in by IqaLearner
     # assert self.monitor in self.recorder.metric_names[1:]
-    def __init__(self, *args, metrics=(), cbs=[], loss_func=DummyLoss,
+
+    # metrics=()
+    def __init__(self, dls=None, model=None, cbs=[], loss_func=DummyLoss,
             **kwargs):
-        super().__init__(*args, metrics=metrics, cbs=cbs, loss_func=loss_func, **kwargs)
+        super().__init__(dls, model, cbs=cbs, loss_func=loss_func, **kwargs)

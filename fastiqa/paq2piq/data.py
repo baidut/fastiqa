@@ -1,4 +1,4 @@
-__all__ = ['ImRoI2MOS']
+__all__ = ['Im2MOS', 'Im2Cat', 'ImRoI2MOS']
 
 """
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -8,7 +8,22 @@ dls.show_batch()
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 """
 
-from . import *
+from ..basics import *
+
+class Im2MOS(IqaDataBunch):
+    target_blocks = (RegressionBlock,)
+    def get_block(self):
+        getters = [
+           ColReader(self.fn_col, pref=self.path/self.folder, suff=self.fn_suffix),
+           ColReader(self.label_col),
+        ]
+        return DataBlock(blocks=(ImageBlock, ) + self.target_blocks,
+                            getters=getters,
+                            item_tfms = self.item_tfms,
+                            splitter = self.get_splitter())
+
+class Im2Cat(Im2MOS):
+    target_blocks = (CategoryBlock,)
 
 def show_roi_batch(dls, b=None, max_n=4, figsize=(15, 5), **kwargs):
     # rb --> rois in a batch
@@ -47,7 +62,7 @@ class ImRoI2MOS(IqaDataBunch):
             if 'width' not in df.columns:
                 df['width'] = self.width
 
-            print('add coordinate information to csv file')
+            logger.info('add coordinate information to csv file')
             # unpack position
             # for p in ['p1', 'p2', 'p3']:
             #     df[p] = df[p].apply(literal_eval)

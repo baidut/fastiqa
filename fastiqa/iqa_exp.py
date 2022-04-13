@@ -38,6 +38,7 @@ from pathlib import Path
 import random
 import torch  # pytorch RNGs
 import numpy as np  # numpy RNG
+import pandas as pd
 import fastai
 import logging
 # from .basics import *
@@ -49,6 +50,7 @@ import wandb
 import os
 from fastai.callback.wandb import *
 os.environ["WANDB_API_KEY"] = '05dea3ba4543b866cc24c79ed647282ed7adf726'
+from fastai.vision.all import * # set_seed
 
 # learner
 def read_log(self):
@@ -109,7 +111,7 @@ class IqaExp(dict):
 
     def set_seed(self, dls=None):
         if self.seed is not None:
-            set_seed(self.seed, True)
+            set_seed(self.seed, reproducible=True)
             if dls is not None:
                 dls.rng.seed(self.seed) # will force to load the database
 

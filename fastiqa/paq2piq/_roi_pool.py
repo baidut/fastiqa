@@ -10,10 +10,10 @@ from torchvision.ops import RoIPool, RoIAlign, PSRoIAlign, PSRoIPool, MultiScale
 # from .bunches._rois import Rois0123
 from ._body_head import BodyHeadModel, num_features_model
 from fastai.vision.all import *  # Tensor
-import logging
 from .qmap import *
 
 import torchvision
+from loguru import logger
 
 # https://forums.fast.ai/t/typeerror-no-implementation-found-for-torch-nn-functional-smooth-l1-loss-on-types-that-implement-torch-function-class-fastai-torch-core-tensorimage-class-fastai-vision-core-tensorbbox/90897
 # TensorImage.register_func(torchvision.ops.roi_pool, torch.nn.functional.smooth_l1_loss, TensorImage, TensorBBox)
@@ -96,26 +96,7 @@ def get_rand_rois(self, img_size, batch_size, device):
     # print(rois.size(), idx.size()) [128, 4] [128, 1]
     return torch.cat((idx, rois), 1)
 
-
-class NoRoIPoolModel(BodyHeadModel):
-    # also use padded image
-    # bunch opt
-    # label_
-
-    @classmethod
-    def get_label_opt(cls, label_cls):
-        # fixed size
-        if label_cls.img_raw_size != None:
-            return {}
-        elif label_cls.img_pad_size is None:
-            return {'val_bs': 1}
-        else: # use padded data
-            return {'folder': '<=640_padded',
-                'csv_labels': 'labels<=640_padded.csv'}
-
-
-
-class RoIPoolModel(NoRoIPoolModel):
+class RoIPoolModel(BodyHeadModel):
     half_precision = False
     rois = None
     drop = 0.5
@@ -144,8 +125,7 @@ class RoIPoolModel(NoRoIPoolModel):
         base_feat = self.body(torch.empty(1,3,16,tmp_img_size,tmp_img_size) if self.is_3d else torch.empty(1,3,tmp_img_size,tmp_img_size))
         scale = next_power_of_2(tmp_img_size// base_feat.size(-1))
         self.roi_pool = self.create_roi_pool(1/scale)
-        #logging.warning(f'roipool: size = {self.pool_size}, scale = 1/{scale}')
-        print(f'roipool: size = {self.pool_size}, scale = 1/{scale}')
+        logger.warning(f'roipool: size = {self.pool_size}, scale = 1/{scale}')
 
     def create_head(self):
         nf = self.num_features
@@ -313,7 +293,7 @@ class RoIPoolModel(NoRoIPoolModel):
         # if not hasattr(self, 'roi_pool'): #self.roi_pool is None: # maynot be correct... must be power of 2
         #     scale = next_power_of_2(im_data.size(-1) // base_feat.size(-1))
         #     self.roi_pool = self.create_roi_pool(1/scale)
-        #     logging.warning(f'roipool: size = {self.pool_size}, scale = 1/{scale}')
+        #     logger.warning(f'roipool: size = {self.pool_size}, scale = 1/{scale}')
 
         #  base feat [16, 512, 1, 17, 30] --> after roi pool    [16, 512, 2, 2]
         if self.half_precision == True:
@@ -332,7 +312,7 @@ class RoIPoolModel(NoRoIPoolModel):
 
 
         pooled_feat = self.roi_pool(base_feat, indexed_rois)
-        logging.debug(f'base feat {base_feat.size()} --> pooled feat {pooled_feat.size()}')
+        logger.debug(f'base feat {base_feat.size()} --> pooled feat {pooled_feat.size()}')
 
         if self.output_features:
             # print('pooled_feat', pooled_feat.size())
@@ -354,7 +334,7 @@ class RoIPoolModel(NoRoIPoolModel):
         # print(pooled_feat.size()) # [bs*n_rois, 512, 2, 2]
         # print(n_output)  # n_rois
         # print(pred.size())  # torch.Size([bs*n_rois, 1])
-        logging.debug(f'batch_size={batch_size} pred:{pred.size()}')
+        logger.debug(f'batch_size={batch_size} pred:{pred.size()}')
 
         return pred
 
@@ -363,35 +343,6 @@ class RoIPoolModel(NoRoIPoolModel):
 
 
 
-class LegacyRoIPoolModel(RoIPoolModel): # old version, use to load CVPR2020 public model
-    def create_head(self):
-        return nn.Sequential(
-          AdaptiveConcatPool2d(),
-          nn.Flatten(),
-          # assume backbone = resnet18, RuntimeError: running_mean should contain 2560 elements not 1024
-          nn.BatchNorm1d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-          nn.Dropout(p=0.25, inplace=False),
-          nn.Linear(in_features=1024, out_features=512, bias=True),
-          nn.ReLU(inplace=True),
-          nn.BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-          nn.Dropout(p=0.5, inplace=False),
-          nn.Linear(in_features=512, out_features=1, bias=True)
-        )
-    def demo_on_image(self, file):
-        def open_image(fname):
-            img = PILImage.create(fname)
-            # PIL.Image.open(fname).convert('RGB')
-            # img = img.resize((size, size))
-            t = torch.Tensor(np.array(img))
-            return t.permute(2,0,1).float()/255.0
-
-        model.eval() ### important (otherwise the output is random and noisy)
-        img = PILImage.create(file)
-        sample =open_image(file).unsqueeze(0) #.cuda()
-        blk_size = [[20,20]]
-        model.input_block_rois(blk_size, [sample.shape[-2], sample.shape[-1]], device=sample.device)  # self.dls.img_raw_size
-        t = model(sample).cpu()
-        QualityMap(t[0].data[1:].reshape(blk_size[0]), img, t[0].data[0])
 
 
 # learn to predict distributions

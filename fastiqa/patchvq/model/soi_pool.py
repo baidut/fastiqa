@@ -7,6 +7,8 @@ from tqdm.auto import tqdm
 from pathlib import Path
 import math
 from ...basics import * # logger
+from loguru import logger
+
 
 def takespread_idx(N, num, clip_size=16):
     length = float(N-clip_size)
@@ -28,7 +30,7 @@ def get_features(x, name, bs, vid_id):
                 x.extract_features(name=name, skip_exist=True)
                 break
             except RuntimeError:
-                print(f'CUDA out of memory. Reduce bs from {bs} to {tmp_bs}.')
+                logger.warning(f'RuntimeError. Reduce bs from {bs} to {tmp_bs}.')
                 continue
 
 def load_feature(vid, feat, path):
@@ -78,7 +80,6 @@ class FeatPooler():
         feats = feats.align_to('roi', 'features', 'N') # N C L
 
         logger.debug(f'preparing:   {_feats.shape} to {feats.shape}')
-        print(f'preparing:   {_feats.shape} to {feats.shape}')
         return feats
 
     def __call__(self, vid): # pool_feat
@@ -93,7 +94,7 @@ class FeatPooler():
         # # clip_num x -1  x  features
         # pooled_feats = torch.cat(pooled_feat_list, dim=0).view(-1, pooled_feat_list[0].shape[-1])
         # logger.debug(f'%cat {pooled_feat_list[0].shape} with length {len(pooled_feat_list)} to {pooled_feats.shape}')
-        # print(f'%cat {pooled_feat_list[0].shape} with length {len(pooled_feat_list)} to {pooled_feats.shape}')
+        # logger.debug(f'%cat {pooled_feat_list[0].shape} with length {len(pooled_feat_list)} to {pooled_feats.shape}')
         # save_feature(pooled_feats, vid, self.output_feat, self.path/'features')  # --> [1, clip_num, features]
         # logger.debug(f'done:   {pooled_feats.shape} ')
         # return pooled_feats
@@ -104,7 +105,7 @@ class FeatPooler():
         pooled_feat = pooled_feat.permute(0,2,1) # --> [1, clip_num, features]
         pooled_feat = pooled_feat.view(-1, pooled_feat[0].shape[-1])
         save_feature(pooled_feat, vid, self.output_feat, self.path/'features')  # --> [1, clip_num, features]
-        print(f'done:   {pooled_feat.shape} ')
+        logger.debug(f'done:   {pooled_feat.shape} ')
         return pooled_feat
 
 

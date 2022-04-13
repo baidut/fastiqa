@@ -1,6 +1,6 @@
-import logging
+# import logging
 # logging.basicConfig()
-logging.basicConfig(level=logging.ERROR) # supress debug messages
+# logging.basicConfig(level=logging.ERROR) # supress debug messages
 # supress info
 # logging.getLogger(__name__).addHandler(logging.NullHandler())
 

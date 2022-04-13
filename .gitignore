@@ -3,6 +3,7 @@ deprecated
 \!*
 exp_*
 release
+valid@*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

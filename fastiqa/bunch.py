@@ -44,7 +44,7 @@ Log
 
 from fastai.vision.all import *
 from functools import cached_property
-import logging
+from loguru import logger
 
 """
 # https://docs.fast.ai/data.transforms#IndexSplitter
@@ -203,20 +203,20 @@ class IqaDataBunch():
 
         propobj = getattr(self.__class__, name, None)
         if isinstance(propobj, property):
-            logging.debug("setting attr %s using property's fset" % name)
+            logger.debug("setting attr %s using property's fset" % name)
             if propobj.fset is None:
                 raise AttributeError(f"can't set attribute {name}")
             propobj.fset(self, value)
             return
         elif '_' != name[0]:
             if name not in self.__dict__:
-                logging.warning(f'__setattr__ {name} not existed')
+                logger.warning(f'__setattr__ {name} not existed')
             elif isinstance(value, (str,int,tuple)) and self.__dict__[name] == value:
                 return # lazy
             if isinstance(value, (str,int,tuple)):
-                logging.info(f'{self.__class__.__name__}({self}).{name}={value}')
+                logger.info(f'{self.__class__.__name__}({self}).{name}={value}')
             else:
-                logging.debug(f'{self.__class__.__name__}({self}).{name}')
+                logger.debug(f'{self.__class__.__name__}({self}).{name}')
         self.__dict__[name] = value
         if '_data' in self.__dict__:
             del self.__dict__['_data'] # clear cache

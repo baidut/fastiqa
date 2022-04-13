@@ -75,6 +75,7 @@ class BodyHeadModel(IqaModel):
     n_out_per_roi = 1
     n_in=3
     map_score = None
+    head_kws = {}
 
     @staticmethod
     def split_on(m):
@@ -143,8 +144,8 @@ class BodyHeadModel(IqaModel):
         # print('base_feat:',  base_feat.size()) # torch.Size([64, 8192, 128])
         pred = self.head(base_feat)
         score = pred.view(batch_size, -1)
-        if self.map_score:
-          return 100*self.map(score)
+
+        return 100*self.map(score) if self.map_score else score
 
     @staticmethod
     def compare_paramters(backbones):

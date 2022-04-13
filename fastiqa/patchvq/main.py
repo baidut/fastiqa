@@ -47,8 +47,9 @@ else:
     from torch.hub import load_state_dict_from_url
 
 # roipool
-from ..paq2piq._roi_pool import LegacyRoIPoolModel, RoIPoolModel
-from ..learn import TestLearner
+from ..paq2piq._roi_pool import RoIPoolModel
+from ..paq2piq.model import P2P_RM
+from ..learn import TestLearner, IqaLearner
 from ..model import IqaModel
 from ..iqa_exp import IqaExp
 
@@ -146,7 +147,8 @@ class PatchVQ(InceptionTimeModel):
             FeatureBlock('r3d18_pooled', roi_index=None, clip_num=None, clip_size=None)
             dls = Feat2MOS.from_dict(dls, bs=bs, feats=feats)
 
-        if not isinstance(dls.label_col, (list, tuple)): # database contains no patch labels
+        if hasattr(dls, 'label_col'):
+          if not isinstance(dls.label_col, (list, tuple)): # database contains no patch labels
             print(f'set self.n_out = 1')
             self.n_out = 1
         return dls
@@ -168,10 +170,10 @@ class PatchVQ(InceptionTimeModel):
         # defautls
         if '3d' in featname:
             bs, clip_num, clip_size = 1, 40, 16
-            model = RoIPoolModel(backbone=backbone, pool_size=(2,2)) # try RoIPoolModel and see
+            model = RoIPoolModel(backbone=backbone, pool_size=(2,2))
         else:
             bs, clip_num, clip_size = 128, None, 1
-            model = LegacyRoIPoolModel(backbone=backbone, pool_size=(2,2)) # try RoIPoolModel and see
+            model = P2P_RM(backbone=backbone, pool_size=(2,2))
 
         if batch_size: bs = batch_size
 
@@ -187,14 +189,14 @@ class PatchVQ(InceptionTimeModel):
         if model_state:
             model.load_state_dict(model_state['model'])
 
-        learn = TestLearner(dls, model)
+        learn = TestLearner(dls, model, metrics=[])
         vid_list = dls.video_list.index.tolist()
         learn.dls.set_vid_id(vid_list[0])
 
         def process(x):
           bar = tqdm(vid_list)
           for vid_id in bar:
-            bar.set_description('Processing: ' + vid_id)
+            bar.set_description('Processing: ' + str(vid_id))
             get_features(x, featname, bs=bs, vid_id=vid_id)
         if vid_id:
           learn.dls.set_vid_id(vid_id)
@@ -209,5 +211,4 @@ class PatchVQ(InceptionTimeModel):
     def demo(cls):
         # n_epoch = 10
         # bs = 128
-        # modify the json files to point to your database locations
         pass
