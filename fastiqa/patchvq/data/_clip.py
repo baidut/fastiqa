@@ -66,7 +66,8 @@ class SingleClip(fastuple):
 def SingleClipBlock(clip_size=8):
     f = partial(SingleClip.create, clip_size=clip_size)
     # return TransformBlock(type_tfms=f, batch_tfms=IntToFloatTensor) # older fastai version
-    return TransformBlock(type_tfms=[f], batch_tfms=IntToFloatTensor) # use the same transforms for both train and valid sets
+    return TransformBlock(type_tfms=[f], batch_tfms=int2float) # use the same transforms for both train and valid sets
+    # return TransformBlock(type_tfms=[f], batch_tfms=IntToFloatTensor) # use the same transforms for both train and valid sets
     # int2float
 # https://docs.fast.ai/tutorial.siamese.html
 

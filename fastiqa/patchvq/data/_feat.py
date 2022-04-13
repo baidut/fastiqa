@@ -142,7 +142,7 @@ PILImage.create(dls.path/dls.folder/'blur_dataset/out_of_focus0098.jpg').show()
 """features as input block"""
 from fastai.vision.all import *
 from functools import partial
-from ._io_clip import takespread
+from ._clip import takespread
 
 # multiple features, then use fastuple
 

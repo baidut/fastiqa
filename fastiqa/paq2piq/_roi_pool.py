@@ -13,6 +13,13 @@ from fastai.vision.all import *  # Tensor
 import logging
 from .qmap import *
 
+import torchvision
+
+# https://forums.fast.ai/t/typeerror-no-implementation-found-for-torch-nn-functional-smooth-l1-loss-on-types-that-implement-torch-function-class-fastai-torch-core-tensorimage-class-fastai-vision-core-tensorbbox/90897
+# TensorImage.register_func(torchvision.ops.roi_pool, torch.nn.functional.smooth_l1_loss, TensorImage, TensorBBox)
+# TensorCategory.register_func(TensorCategory.mul, TensorCategory, TensorImage)
+# TensorImage.register_func(torch.nn.functional.binary_cross_entropy_with_logits, TensorImage, TensorCategory)
+
 
 def get_idx(batch_size, n_output, device=None):  # idx of rois
     idx = torch.arange(batch_size, dtype=torch.float, device=device).view(1, -1)
@@ -212,8 +219,12 @@ class RoIPoolModel(NoRoIPoolModel):
     def forward(self, im_data: Tensor, rois_data: Tensor = None, labels: Tensor = None, **kwargs) -> Tensor:
         # print(im_data) # float images [0 to 1]
         # print(type(im_data)) # Clip or TensorImage -- no preprocessing? # when extracting features, TestLearner applies no preprocessing?
+        # print(type(rois_data)) # first check rois_data is none case. get the ground truth results
+        # print(type(labels))
+        # <class 'fastai.torch_core.TensorImage'>
         # try fastai older version and see
-        logging.debug(f'im_data {im_data.size()}')
+        # logging.debug(f'im_data {im_data.size()}')
+        # if self.is_3d: print(f'im_data {im_data.size()}')
         # print(type(im_data)) # <class 'fastai.torch_core.TensorImage'>
         # print('*'*10)
         # print(type(im_data))
@@ -223,6 +234,11 @@ class RoIPoolModel(NoRoIPoolModel):
               im_data = im_data.transpose(-4,-3)
 
         base_feat = self.body(im_data)  # torch.Size([16, 512, 12, 16])
+        # if self.is_3d:
+        #     print('base_feat[0]', base_feat[0])
+        #     raise TypeError
+
+
         bbox_mode = labels is not None # bbox format
 
         if self.output_features and self.pool_size is None:
@@ -279,6 +295,11 @@ class RoIPoolModel(NoRoIPoolModel):
         # print(n_output, batch_size, idx.size(), rois_data.size())
         indexed_rois = torch.cat((idx, rois_data), 1)
 
+        # base_feat torch.Size([1, 512, 1, 23, 40])
+        # base_feat(squeeze) torch.Size([1, 512, 23, 40])
+        # batch size = 1
+
+        # if self.is_3d: print('base_feat', base_feat.size())
         if self.is_3d:
             # video clip size = 8, the output would be 1 (8-->1)
             # video clip size = 16, the output would be 2 (8-->2)
@@ -286,6 +307,7 @@ class RoIPoolModel(NoRoIPoolModel):
             # print('base_feat:', base_feat.size()) # torch.Size([16, 512, 1, 17, 30])
             # no feature along the time axis? (one clip temporal output 1)
             base_feat = base_feat.squeeze(2)
+            # print('base_feat(squeeze)', base_feat.size())
 
         # automatically compute the downsample scale
         # if not hasattr(self, 'roi_pool'): #self.roi_pool is None: # maynot be correct... must be power of 2
@@ -296,6 +318,19 @@ class RoIPoolModel(NoRoIPoolModel):
         #  base feat [16, 512, 1, 17, 30] --> after roi pool    [16, 512, 2, 2]
         if self.half_precision == True:
           indexed_rois = indexed_rois.half()
+
+
+        # base_feat torch.Size([1, 512, 23, 40]) ?? 3d feature vs 2d feature
+        # indexed_rois torch.Size([3, 5])
+
+        # if self.is_3d: print('indexed_rois', indexed_rois.size())
+        # TypeError: no implementation found for 'torch.opstorchvision.roi_pool' on types that implement __torch_function__: [TensorImage, TensorCategory]
+
+        # if self.is_3d:
+        #     print('3d convert TensorImage to tensor')
+        #     base_feat = base_feat.data # TensorImage --> Tensor
+
+
         pooled_feat = self.roi_pool(base_feat, indexed_rois)
         logging.debug(f'base feat {base_feat.size()} --> pooled feat {pooled_feat.size()}')
 
@@ -355,7 +390,7 @@ class LegacyRoIPoolModel(RoIPoolModel): # old version, use to load CVPR2020 publ
         sample =open_image(file).unsqueeze(0) #.cuda()
         blk_size = [[20,20]]
         model.input_block_rois(blk_size, [sample.shape[-2], sample.shape[-1]], device=sample.device)  # self.dls.img_raw_size
-        t = model(sample).cpu() 
+        t = model(sample).cpu()
         QualityMap(t[0].data[1:].reshape(blk_size[0]), img, t[0].data[0])
 
 

@@ -56,8 +56,8 @@ form the x for the model...
 
 import pandas as pd
 from fastai.vision.all import *
-from ._io_clip import *
-from ._io_vid2mos import *
+from ._clip import *
+from .vid2mos import *
 # the same corrdincate
 # append df?
 # build a df? no need

@@ -6,7 +6,7 @@ import pandas as pd
 from tqdm.auto import tqdm
 from pathlib import Path
 import math
-from ..basics import * # logger
+from ...basics import * # logger
 
 def takespread_idx(N, num, clip_size=16):
     length = float(N-clip_size)

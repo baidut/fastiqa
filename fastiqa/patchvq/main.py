@@ -28,24 +28,32 @@ PatchVQ().roipool('r3d_18', dbinfo, backbone=r3d_18)
 # from tqdm import tqdm
 from .. import *
 
+import torch
 from tqdm.auto import tqdm
 
-from ._inceptiontime import *
-from ._io_single_vid2mos import *
-from ._io_feat2mos import *
+from .model.inceptiontime import *
+from .model import resnet3d
+from .data.single_vid2mos import *
+from .data.feat2mos import *
 
 # extractFeatures
 from fastai.vision.all import * # resnet18
-from torchvision.models.video.resnet import * # r3d_18
+# from torchvision.models.video.resnet import * # r3d_18
+from packaging import version
+
+if version.parse(torchvision.__version__) < version.parse("0.11.0"):
+    from torchvision.models.utils import load_state_dict_from_url
+else:
+    from torch.hub import load_state_dict_from_url
 
 # roipool
-from ..paq2piq._roi_pool import LegacyRoIPoolModel
+from ..paq2piq._roi_pool import LegacyRoIPoolModel, RoIPoolModel
 from ..learn import TestLearner
 from ..model import IqaModel
 from ..iqa_exp import IqaExp
 
 # soipool
-from ._soi_pool import pool_features
+from .model.soi_pool import pool_features
 
 def get_features(x, name, bs, vid_id):
     x.dls.set_vid_id(vid_id)
@@ -53,8 +61,7 @@ def get_features(x, name, bs, vid_id):
     while True:
         try:
             x.dls.bs = tmp_bs
-            x.extract_features(name=name, skip_exist=True)
-            break
+            return x.extract_features(name=name, skip_exist=True)
         except RuntimeError as e:
             if tmp_bs == 1:
                 print("Batch size has reduced to 1. Check if there is something wrong or clear GPU memory")
@@ -113,18 +120,30 @@ class InceptionTimeModel(IqaModel):
     def input_sois(self, clip_num=16):
         raise NotImplementedError
 
+def r3d18_K_200ep(pretrained=False, **kwargs):
+    model = resnet3d.generate_model(model_depth=18, n_classes=700, **kwargs)
+    if pretrained:
+        # model_state = torch.load("/home/zq/FB8T/pth/fastai-r3d18_K_200ep.pth")
+        # print('loading... local weights')
+        # delete the cached weights
+        model_state = load_state_dict_from_url('https://github.com/baidut/PatchVQ/releases/download/v0.1/fastai-r3d18_K_200ep.pth')
+        model.load_state_dict(model_state)
+    else:
+        print('WARNING: pretrained r3d18 not loaded')
+
+    model.eval()
+    return model
 
 class PatchVQ(InceptionTimeModel):
     siamese=True
     c_in=2048+2048
     n_out=4
-    path_to_paq2piq_model_state = '/home/zq/FB8T/pth/RoIPoolModel-fit.10.bs.120.pth'
 
     def bunch(self, dls, bs=128):
         if isinstance(dls, dict):
             # download extracted features or extract by your own
             feats = FeatureBlock('paq2piq_pooled', roi_index=None, clip_num=None, clip_size=None), \
-            FeatureBlock('r3d_18_pooled', roi_index=None, clip_num=None, clip_size=None)
+            FeatureBlock('r3d18_pooled', roi_index=None, clip_num=None, clip_size=None)
             dls = Feat2MOS.from_dict(dls, bs=bs, feats=feats)
 
         if not isinstance(dls.label_col, (list, tuple)): # database contains no patch labels
@@ -133,27 +152,28 @@ class PatchVQ(InceptionTimeModel):
         return dls
 
     def extractFeatures(self, featname, dbinfo):
-        self.roipool('paq2piq', dbinfo, backbone=resnet18, path_to_model_state=self.path_to_paq2piq_model_state)
+        model_state = load_state_dict_from_url('https://github.com/baidut/PatchVQ/releases/download/v0.1/RoIPoolModel-fit.10.bs.120.pth')
+        self.roipool('paq2piq', dbinfo, backbone=resnet18, model_state=model_state)
         self.soipool('paq2piq', dbinfo)
 
-        self.roipool('r3d_18', dbinfo, backbone=r3d_18)
-        self.soipool('r3d_18', dbinfo)
+        self.roipool('r3d18', dbinfo, backbone=r3d18_K_200ep, batch_size=1)
+        self.soipool('r3d18', dbinfo)
 
 
     def soipool(self, featname, dbinfo, input_suffix="", output_suffix="_pooled", pool_size=16):
         pool_features(dbinfo, featname, input_suffix=input_suffix, output_suffix=output_suffix, pool_size=pool_size)
 
 
-    def roipool(self, featname, dbinfo, backbone, path_to_model_state=None, batch_size=None):
+    def roipool(self, featname, dbinfo, backbone, roi_col=None, model_state=None, batch_size=None, vid_id=None):
         # defautls
         if '3d' in featname:
-            bs, clip_num, clip_size = 8, 40, 8
+            bs, clip_num, clip_size = 1, 40, 16
+            model = RoIPoolModel(backbone=backbone, pool_size=(2,2)) # try RoIPoolModel and see
         else:
             bs, clip_num, clip_size = 128, None, 1
+            model = LegacyRoIPoolModel(backbone=backbone, pool_size=(2,2)) # try RoIPoolModel and see
 
         if batch_size: bs = batch_size
-
-        roi_col = None # depending on database
 
         dls = SingleVideo2MOS.from_dict(dbinfo,
             use_nan_label=True, clip_num=clip_num, clip_size=clip_size,
@@ -163,27 +183,26 @@ class PatchVQ(InceptionTimeModel):
         # The following version is trained with new version, don't use it
         # path_to_model_state = '/home/zq/FB8T/pth/P2P-RM.pth' # RoIPoolModel-fit.10.bs.120 change the location accordingly
         # backbone + roipool
-        model = LegacyRoIPoolModel(backbone=backbone, pool_size=(2,2))
-
-        if path_to_model_state:
-            model_state = torch.load(path_to_model_state, map_location=lambda storage, loc: storage)
-            model.load_state_dict(model_state["model"]) # model.load_state_dict(model_state["model"])
-            print('loaded model weights: '+path_to_model_state)
+        # model = LegacyRoIPoolModel(backbone=backbone, pool_size=(2,2)) # try RoIPoolModel and see
+        if model_state:
+            model.load_state_dict(model_state['model'])
 
         learn = TestLearner(dls, model)
         vid_list = dls.video_list.index.tolist()
         learn.dls.set_vid_id(vid_list[0])
-
-        e = IqaExp('exp_features', gpu=0, seed=None)
-        e[featname] = learn
 
         def process(x):
           bar = tqdm(vid_list)
           for vid_id in bar:
             bar.set_description('Processing: ' + vid_id)
             get_features(x, featname, bs=bs, vid_id=vid_id)
-
-        e.run(process)
+        if vid_id:
+          learn.dls.set_vid_id(vid_id)
+          return learn.extract_features(name=featname)
+        else:
+          e = IqaExp('exp_features', gpu=0, seed=None)
+          e[featname] = learn
+          e.run(process)
 
 
     @staticmethod

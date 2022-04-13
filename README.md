@@ -8,8 +8,9 @@
 
 :construction: :construction: :construction: :construction: :construction: :construction: :construction: :construction: :construction:
 
-COMING SOON 
+COMING SOON
 
 - [ ] PaQ2PiQ (by April 12)
 - [ ] PatchVQ (by April 15)
 - [ ] NIMA
+- [ ] VSFA

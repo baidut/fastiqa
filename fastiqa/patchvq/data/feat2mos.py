@@ -35,8 +35,8 @@ dls.show_batch()
 """
 
 from . import *
-from ._io_feat import *
-from ..bunch import *  # IqaDataBunch
+from ._feat import *
+from ...bunch import *  # IqaDataBunch
 
 class Feat2MOS(IqaDataBunch):
     feat_folder = 'features'

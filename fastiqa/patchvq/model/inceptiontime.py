@@ -4,7 +4,7 @@ __all__ = ['shortcut', 'Inception', 'InceptionBlock', 'InceptionTime']
 
 # Cell
 from fastai.data.all import *
-from ._inceptiontime_layers import *
+from .inceptiontime_layers import *
 
 # Cell
 # This is an unofficial PyTorch implementation by Ignacio Oguiza - oguiza@gmail.com based on:

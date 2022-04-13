@@ -39,15 +39,11 @@ from pathlib import Path
 
 """
 Log
-* removed @cached_property
-* add clear_cache
-* add @cached_property back LOL (but use the package instead)
 * remove self.set_bs(bs)  --> self.reset(bs=bs)
 """
 
 from fastai.vision.all import *
-# from ..utils.cached_property import cached_property
-from cached_property import cached_property
+from functools import cached_property
 import logging
 
 """
