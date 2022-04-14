@@ -108,7 +108,7 @@ class IqaLearner(Learner):
 
         # predict on database (cached) and get numpy predictions
 
-    def get_np_preds(self, on=None, cache=True, jointplot=False, **kwargs):
+    def get_np_preds(self, db=None, cache=True, jointplot=False, **kwargs):
         """
         get numpy predictions on a bunched database
         TODO: check bunched
@@ -116,8 +116,10 @@ class IqaLearner(Learner):
             output = preds[0]
             target = preds[1]
         """
-        if on is None:
-            on = self.dls
+        on = db #rename
+
+        if db is None:
+            db = self.dls
 
         # if we don't flatten it, then we cannot store it.
         # so we need to only get the valid output
@@ -127,25 +129,25 @@ class IqaLearner(Learner):
         # if isinstance(self.model, IqaModel):
         #
         if hasattr(self.model, 'bunch'):
-            on = self.model.bunch(on)
+            db = self.model.bunch(db)
 
-        metric_idx = on.metric_idx
+        metric_idx = db.metric_idx
         # suffixes = ['', '_patch_1', '_patch_2', '_patch_3']
         suffixes = ['', '_p1', '_p2', '_p3']
 
-        csv_file = self.path / ('valid@' + on.__name__ + suffixes[metric_idx] + '.csv')
+        csv_file = self.path / ('valid@' + db.__name__ + suffixes[metric_idx] + '.csv')
         if os.path.isfile(csv_file) and cache:
             logger.warning(f'load cache {csv_file}')
             df = pd.read_csv(csv_file)
             output = np.array(df['output'].tolist())
             target = np.array(df['target'].tolist())
         else:
-            c = on.c if type(on.c) == int else on.c[-1]
-            logger.debug(f'validating... {self.model.__name__}@{on.__name__} (c={c})')
-            # on.c = 1
+            c = db.c if type(db.c) == int else db.c[-1]
+            logger.debug(f'validating... {self.model.__name__}@{db.__name__} (c={c})')
+            # db.c = 1
             # TODO fuse duplicate code with rois_learner
             current_data = self.dls
-            self.dls = on
+            self.dls = db
             preds = self.get_preds()
             self.dls = current_data
 
@@ -172,20 +174,20 @@ class IqaLearner(Learner):
                     if len(output) == len(target):
                         for n in [0, 1, 2, 3]:
                             df = pd.DataFrame({'output': output[n::c], 'target': target[n::c]})
-                            csv_file = self.path / ('valid@' + on.__name__ + suffixes[n] + '.csv')
+                            csv_file = self.path / ('valid@' + db.__name__ + suffixes[n] + '.csv')
                             df.to_csv(csv_file, index=False)
 
                     elif c*len(output) == len(target):
                         df = pd.DataFrame({'output': output, 'target': target[0::c]})
-                        csv_file = self.path / ('valid@' + on.__name__  + '.csv')
+                        csv_file = self.path / ('valid@' + db.__name__  + '.csv')
                         df.to_csv(csv_file, index=False)
                     else:
                         raise
                 elif c == 2:
                     logger.debug('db.c==2')
-                    for n, roi_index in enumerate(on.feats[0].roi_index):
+                    for n, roi_index in enumerate(db.feats[0].roi_index):
                         df = pd.DataFrame({'output': output[n::c], 'target': target[n::c]})
-                        csv_file = self.path / ('valid@' + on.__name__ + suffixes[roi_index] + '.csv')
+                        csv_file = self.path / ('valid@' + db.__name__ + suffixes[roi_index] + '.csv')
                         df.to_csv(csv_file, index=False)
                 elif c == 1:
                     logger.debug('db.c==1')
@@ -195,9 +197,9 @@ class IqaLearner(Learner):
                     raise NotImplementedError
 
             if c*len(output)!=len(target): # dirty fix
-                output = output[on.metric_idx::c]
+                output = output[db.metric_idx::c]
 
-            target = target[on.metric_idx::c]
+            target = target[db.metric_idx::c]
 
         if cache and jointplot:
             # p = sns.jointplot(x="output", y="target", data=df)
@@ -206,8 +208,8 @@ class IqaLearner(Learner):
             # size: 30k 2   1k 5
             g = sns.jointplot(x="output", y="target", data=df, kind="reg", marker = '.', scatter_kws={"s": 5},
                   xlim=(0, 100), ylim=(0, 100)) # color="r",
-            plt.suptitle(f"{self.model.__name__}@{on.__name__}")
-            #g.fig.suptitle(f"{self.model.__name__}@{on.__name__}") # https://stackoverflow.com/questions/60358228/how-to-set-title-on-seaborn-jointplot
+            plt.suptitle(f"{self.model.__name__}@{db.__name__}")
+            #g.fig.suptitle(f"{self.model.__name__}@{db.__name__}") # https://stackoverflow.com/questions/60358228/how-to-set-title-on-seaborn-jointplot
             #g.annotate(stats.pearsonr)
             # g = sns.JointGrid(x="output", y="target", data=df) # ratio=100
             # g.plot_joint(sns.regplot)

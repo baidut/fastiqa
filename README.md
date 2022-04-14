@@ -10,7 +10,7 @@
 
 COMING SOON
 
-- [ ] PaQ2PiQ (by April 12)
+- [x] PaQ2PiQ (by April 12)
 - [ ] PatchVQ (by April 15)
 - [ ] NIMA
 - [ ] VSFA

@@ -4,7 +4,14 @@ from ..basics import *
 from .data import *
 from ._fastai1 import create_paq2piq_head, bn_drop_lin, my_create_head
 
-__all__ = ['P2P_BM', 'P2P_RM', 'P2P_FM']
+from packaging import version
+
+if version.parse(torchvision.__version__) < version.parse("0.11.0"):
+    from torchvision.models.utils import load_state_dict_from_url
+else:
+    from torch.hub import load_state_dict_from_url
+
+__all__ = ['P2P_BM', 'P2P_RM', 'P2P_FM', 'LegacyRoIPoolModel']
 
 
 class P2P_BM(BodyHeadModel):
@@ -12,8 +19,8 @@ class P2P_BM(BodyHeadModel):
     # bunch opt
     # label_
     model_state_url = 'https://github.com/baidut/fastiqa/releases/download/v2.0.0/P2P-BM.pth'
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, backbone = resnet18, **kwargs)
+    def __init__(self, backbone=resnet18, *args, **kwargs):
+        super().__init__(*args, backbone = backbone, **kwargs)
         self.__dict__.update(kwargs)
 
     def bunch(self, dls):
@@ -23,6 +30,7 @@ class P2P_BM(BodyHeadModel):
 
     def create_head(self):
         return create_paq2piq_head()
+
 
 
 class P2P_RM(RoIPoolModel): # old version, use to load CVPR2020 public model
@@ -37,8 +45,8 @@ class P2P_RM(RoIPoolModel): # old version, use to load CVPR2020 public model
         return dls
 
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, backbone = resnet18, pool_size = (2,2), **kwargs)
+    def __init__(self, *args, backbone = resnet18, pool_size = (2,2), **kwargs):
+        super().__init__(*args, backbone = backbone, pool_size = pool_size, **kwargs)
         self.__dict__.update(kwargs)
 
     def demo_on_image(self, file):
@@ -57,6 +65,14 @@ class P2P_RM(RoIPoolModel): # old version, use to load CVPR2020 public model
         t = model(sample).cpu()
         QualityMap(t[0].data[1:].reshape(blk_size[0]), img, t[0].data[0])
 
+
+class LegacyRoIPoolModel(P2P_RM): # older version
+    def __post_init__(self, *args,**kwargs):
+        url = 'https://github.com/baidut/PatchVQ/releases/download/v0.1/RoIPoolModel-fit.10.bs.120.pth'
+        logger.info(f'load finetuned model... {url}')
+        model_state = load_state_dict_from_url(url)
+        # torch.load(self.PATH_TO_MODEL_STATE, map_location=lambda storage, loc: storage)
+        self.load_state_dict(model_state["model"])
 
 class P2P_FM(P2P_RM):
     contain_image_roi = True

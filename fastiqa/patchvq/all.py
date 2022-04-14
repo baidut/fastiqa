@@ -27,6 +27,8 @@ PatchVQ().roipool('r3d_18', dbinfo, backbone=r3d_18)
 # from torchvision.models.video.resnet import *
 # from tqdm import tqdm
 from .. import *
+from ..basics import *
+from ..model import *
 
 import torch
 from tqdm.auto import tqdm
@@ -39,15 +41,9 @@ from .data.feat2mos import *
 # extractFeatures
 from fastai.vision.all import * # resnet18
 # from torchvision.models.video.resnet import * # r3d_18
-from packaging import version
-
-if version.parse(torchvision.__version__) < version.parse("0.11.0"):
-    from torchvision.models.utils import load_state_dict_from_url
-else:
-    from torch.hub import load_state_dict_from_url
 
 # roipool
-from ..paq2piq._roi_pool import RoIPoolModel
+from ..paq2piq._roi_pool import *
 from ..paq2piq.model import P2P_RM
 from ..learn import TestLearner, IqaLearner
 from ..model import IqaModel
@@ -65,11 +61,11 @@ def get_features(x, name, bs, vid_id):
             return x.extract_features(name=name, skip_exist=True)
         except RuntimeError as e:
             if tmp_bs == 1:
-                print("Batch size has reduced to 1. Check if there is something wrong or clear GPU memory")
+                logger.error("Batch size has been reduced to 1. Check if there is something wrong or clear GPU memory")
                 raise e
             else:
                 tmp_bs //= 2
-                print(f'CUDA out of memory. Reduce bs from {bs} to {tmp_bs}.')
+                logger.warning(f'RuntimeError Encountered. Reduce bs from {bs} to {tmp_bs}.')
                 continue
 
 def load_feature(vid, feat, path):
@@ -139,6 +135,7 @@ class PatchVQ(InceptionTimeModel):
     siamese=True
     c_in=2048+2048
     n_out=4
+    model_state_url = 'https://github.com/baidut/PatchVQ/releases/download/v0.1/PatchVQ.pth'
 
     def bunch(self, dls, bs=128):
         if isinstance(dls, dict):
@@ -149,34 +146,25 @@ class PatchVQ(InceptionTimeModel):
 
         if hasattr(dls, 'label_col'):
           if not isinstance(dls.label_col, (list, tuple)): # database contains no patch labels
-            print(f'set self.n_out = 1')
             self.n_out = 1
         return dls
 
-    def extractFeatures(self, dbinfo):
-        model_state = load_state_dict_from_url('https://github.com/baidut/PatchVQ/releases/download/v0.1/RoIPoolModel-fit.10.bs.120.pth')
-        self.roipool('paq2piq', dbinfo, backbone=resnet18, model_state=model_state)
-        self.roipool('r3d18', dbinfo, backbone=r3d18_K_200ep, batch_size=1)
+    @staticmethod
+    def extractFeatures(dbinfo):
+        logger.info('Extract 2d features')
+        model.roipool(LegacyRoIPoolModel(), dbinfo, featname='paq2piq', bs=32, clip_size=1)
+        model.soipool('paq2piq', dbinfo)
 
-        self.soipool('paq2piq', dbinfo)
-        self.soipool('r3d18', dbinfo)
+        logger.info('Extract 3d features')
+        model.roipool(RoIPoolModel(backbone=r3d18_K_200ep), dbinfo, featname='r3d18', bs=1, clip_num=40, clip_size=16)
+        model.soipool('r3d18', dbinfo)
 
-
-    def soipool(self, featname, dbinfo, input_suffix="", output_suffix="_pooled", pool_size=16):
+    @staticmethod
+    def soipool(featname, dbinfo, input_suffix="", output_suffix="_pooled", pool_size=16):
         pool_features(dbinfo, featname, input_suffix=input_suffix, output_suffix=output_suffix, pool_size=pool_size)
 
-
-    def roipool(self, featname, dbinfo, backbone, roi_col=None, model_state=None, batch_size=None, vid_id=None):
-        # defautls
-        if '3d' in featname:
-            bs, clip_num, clip_size = 1, 40, 16
-            model = RoIPoolModel(backbone=backbone, pool_size=(2,2))
-        else:
-            bs, clip_num, clip_size = 128, None, 1
-            model = P2P_RM(backbone=backbone, pool_size=(2,2))
-
-        if batch_size: bs = batch_size
-
+    @staticmethod
+    def roipool(model, dbinfo, featname, bs=16, clip_size=1, clip_num=None, roi_col=None, model_state=None, vid_id=None):
         dls = SingleVideo2MOS.from_dict(dbinfo,
             use_nan_label=True, clip_num=clip_num, clip_size=clip_size,
             bs=bs)
@@ -186,8 +174,6 @@ class PatchVQ(InceptionTimeModel):
         # path_to_model_state = '/home/zq/FB8T/pth/P2P-RM.pth' # RoIPoolModel-fit.10.bs.120 change the location accordingly
         # backbone + roipool
         # model = LegacyRoIPoolModel(backbone=backbone, pool_size=(2,2)) # try RoIPoolModel and see
-        if model_state:
-            model.load_state_dict(model_state['model'])
 
         learn = TestLearner(dls, model, metrics=[])
         vid_list = dls.video_list.index.tolist()
@@ -205,10 +191,3 @@ class PatchVQ(InceptionTimeModel):
           e = IqaExp('exp_features', gpu=0, seed=None)
           e[featname] = learn
           e.run(process)
-
-
-    @staticmethod
-    def demo(cls):
-        # n_epoch = 10
-        # bs = 128
-        pass
